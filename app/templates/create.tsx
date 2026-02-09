@@ -1,0 +1,229 @@
+import { View, Text, TextInput, ScrollView, TouchableOpacity, Modal, FlatList, Alert } from "react-native";
+import { useState, useEffect } from "react";
+import { Stack, router } from "expo-router";
+import { ScreenLayout } from "@/components/ui/ScreenLayout";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Plus, X, Search, Save, Dumbbell } from "lucide-react-native";
+import { createTemplate } from "@/lib/api/templates";
+import { getExercises as fetchExercises } from "@/lib/api/workouts";
+import { Exercise } from "@/lib/types";
+
+interface TemplateExerciseItem {
+    id: string;
+    name: string;
+    sets: string; // string for input, parse to int
+}
+
+export default function CreateTemplateScreen() {
+    const [name, setName] = useState("");
+    const [description, setDescription] = useState("");
+    const [addedExercises, setAddedExercises] = useState<TemplateExerciseItem[]>([]);
+
+    // Picker State
+    const [isPickerVisible, setPickerVisible] = useState(false);
+    const [allExercises, setAllExercises] = useState<Exercise[]>([]);
+    const [search, setSearch] = useState("");
+    const [isSaving, setSaving] = useState(false);
+
+    useEffect(() => {
+        loadExercises();
+    }, []);
+
+    const loadExercises = async () => {
+        const data = await fetchExercises();
+        const mapped: Exercise[] = data.map((ex: any) => ({
+            id: ex.id,
+            name: ex.name,
+            muscleGroup: ex.muscle_group || "Other",
+            category: ex.category || "Other",
+        }));
+        setAllExercises(mapped);
+    };
+
+    const handleAddExercise = (exercise: Exercise) => {
+        setAddedExercises([...addedExercises, { id: exercise.id, name: exercise.name, sets: "3" }]);
+        setPickerVisible(false);
+        setSearch("");
+    };
+
+    const handleRemoveExercise = (index: number) => {
+        const newList = [...addedExercises];
+        newList.splice(index, 1);
+        setAddedExercises(newList);
+    };
+
+    const updateSets = (index: number, value: string) => {
+        const newList = [...addedExercises];
+        newList[index].sets = value;
+        setAddedExercises(newList);
+    };
+
+    const handleSave = async () => {
+        if (!name.trim()) {
+            Alert.alert("Missing Info", "Please enter a routine name.");
+            return;
+        }
+        if (addedExercises.length === 0) {
+            Alert.alert("Empty Routine", "Please add at least one exercise.");
+            return;
+        }
+
+        setSaving(true);
+        const exercisesPayload = addedExercises.map(ex => ({
+            id: ex.id,
+            sets: parseInt(ex.sets, 10) || 3
+        }));
+
+        const result = await createTemplate(name, description, exercisesPayload);
+        setSaving(false);
+
+        if (result.success) {
+            Alert.alert("Success", "Routine created!", [
+                { text: "OK", onPress: () => router.back() }
+            ]);
+        } else {
+            Alert.alert("Error", "Failed to save routine. Please try again.");
+        }
+    };
+
+    const filteredExercises = allExercises.filter(ex =>
+        ex.name.toLowerCase().includes(search.toLowerCase())
+    );
+
+    return (
+        <ScreenLayout>
+            <Stack.Screen options={{ title: "New Routine", headerBackTitle: "Back" }} />
+
+            <View className="flex-row justify-between items-center mb-6 mt-4">
+                <Text className="text-white text-2xl font-bold">Create Routine</Text>
+                <Button
+                    title={isSaving ? "Saving..." : "Save"}
+                    onPress={handleSave}
+                    disabled={isSaving}
+                    className="px-6"
+                />
+            </View>
+
+            <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+                {/* Details */}
+                <Card className="mb-6">
+                    <Text className="text-zinc-400 text-xs mb-1 uppercase tracking-wider">Routine Name</Text>
+                    <TextInput
+                        className="text-white text-lg border-b border-zinc-700 pb-2 mb-4"
+                        placeholder="e.g. Leg Blaster"
+                        placeholderTextColor="#52525b"
+                        value={name}
+                        onChangeText={setName}
+                    />
+
+                    <Text className="text-zinc-400 text-xs mb-1 uppercase tracking-wider">Description (Optional)</Text>
+                    <TextInput
+                        className="text-white text-base border-b border-zinc-700 pb-2"
+                        placeholder="e.g. Focus on quads"
+                        placeholderTextColor="#52525b"
+                        value={description}
+                        onChangeText={setDescription}
+                    />
+                </Card>
+
+                {/* Exercises List */}
+                <View className="flex-row justify-between items-center mb-4">
+                    <Text className="text-white text-lg font-bold">Exercises</Text>
+                    <TouchableOpacity
+                        className="flex-row items-center bg-blue-600 px-3 py-2 rounded-lg"
+                        onPress={() => setPickerVisible(true)}
+                    >
+                        <Plus size={16} color="white" />
+                        <Text className="text-white font-semibold ml-1">Add Exercise</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {addedExercises.length === 0 ? (
+                    <View className="items-center py-10 border-2 border-dashed border-zinc-800 rounded-xl">
+                        <Dumbbell size={40} color="#3f3f46" />
+                        <Text className="text-zinc-500 mt-4">No exercises added yet</Text>
+                    </View>
+                ) : (
+                    addedExercises.map((ex, index) => (
+                        <Card key={`${ex.id}-${index}`} className="mb-4">
+                            <View className="flex-row items-center justify-between">
+                                <View className="flex-1">
+                                    <Text className="text-white font-bold text-lg">{ex.name}</Text>
+                                    <View className="flex-row items-center mt-2 bg-zinc-900 self-start px-2 py-1 rounded border border-zinc-800">
+                                        <Text className="text-zinc-400 text-sm mr-2">Target Sets:</Text>
+                                        <TextInput
+                                            className="text-white font-bold text-center w-10 border-b border-zinc-600"
+                                            value={ex.sets}
+                                            onChangeText={(text) => updateSets(index, text)}
+                                            keyboardType="numeric"
+                                            maxLength={2}
+                                        />
+                                    </View>
+                                </View>
+                                <TouchableOpacity
+                                    onPress={() => handleRemoveExercise(index)}
+                                    className="p-2 bg-zinc-900 rounded-full"
+                                >
+                                    <X size={20} color="#ef4444" />
+                                </TouchableOpacity>
+                            </View>
+                        </Card>
+                    ))
+                )}
+
+                <View className="h-20" />
+            </ScrollView>
+
+            {/* Exercise Picker Modal */}
+            <Modal
+                visible={isPickerVisible}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setPickerVisible(false)}
+            >
+                <View className="flex-1 bg-black/90">
+                    <View className="flex-1 bg-zinc-950 mt-12 rounded-t-3xl border-t border-zinc-800">
+                        <View className="p-4 border-b border-zinc-800 flex-row justify-between items-center">
+                            <Text className="text-white text-xl font-bold">Add Exercise</Text>
+                            <TouchableOpacity onPress={() => setPickerVisible(false)}>
+                                <X size={24} color="#a1a1aa" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View className="p-4">
+                            <View className="flex-row items-center bg-zinc-900 rounded-xl px-4 py-3 border border-zinc-800">
+                                <Search size={20} color="#71717a" />
+                                <TextInput
+                                    placeholder="Search..."
+                                    placeholderTextColor="#71717a"
+                                    className="flex-1 ml-3 text-white text-base"
+                                    value={search}
+                                    onChangeText={setSearch}
+                                    autoFocus
+                                />
+                            </View>
+                        </View>
+
+                        <FlatList
+                            data={filteredExercises}
+                            keyExtractor={(item) => item.id}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity
+                                    className="flex-row items-center justify-between p-4 border-b border-zinc-900"
+                                    onPress={() => handleAddExercise(item)}
+                                >
+                                    <View>
+                                        <Text className="text-white font-semibold text-lg">{item.name}</Text>
+                                        <Text className="text-zinc-500">{item.muscleGroup}</Text>
+                                    </View>
+                                    <Plus size={20} color="#3b82f6" />
+                                </TouchableOpacity>
+                            )}
+                        />
+                    </View>
+                </View>
+            </Modal>
+        </ScreenLayout>
+    );
+}
