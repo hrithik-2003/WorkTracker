@@ -32,28 +32,10 @@ function getTimeOfDay(): string {
 }
 
 /**
- * Generate a workout name based on current date and time
- * Format: "5th Feb 2026 - Morning"
+ * Generate a workout name
  */
 function generateWorkoutName(): string {
-    const now = new Date();
-    const day = now.getDate();
-    const suffix = getDaySuffix(day);
-    const month = now.toLocaleString("en-US", { month: "short" });
-    const year = now.getFullYear();
-    const timeOfDay = getTimeOfDay();
-
-    return `${day}${suffix} ${month} ${year} - ${timeOfDay}`;
-}
-
-function getDaySuffix(day: number): string {
-    if (day >= 11 && day <= 13) return "th";
-    switch (day % 10) {
-        case 1: return "st";
-        case 2: return "nd";
-        case 3: return "rd";
-        default: return "th";
-    }
+    return "Custom Workout";
 }
 
 export const useWorkoutStore = create<WorkoutState>()(

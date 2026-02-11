@@ -6,7 +6,7 @@ import { ScreenLayout } from "@/components/ui/ScreenLayout";
 import { Button } from "@/components/ui/Button";
 import { ExerciseCard } from "@/components/workout/ExerciseCard";
 import { getTemplates, getTemplateDetails, Template } from "@/lib/api/templates";
-import { ChevronDown, FolderOpen } from "lucide-react-native";
+import { ChevronDown, FolderOpen, Plus, X } from "lucide-react-native";
 
 export default function ActiveWorkoutScreen() {
     const activeWorkout = useWorkoutStore((state) => state.activeWorkout);
@@ -16,6 +16,7 @@ export default function ActiveWorkoutScreen() {
     const [templates, setTemplates] = useState<Template[]>([]);
     const [showTemplatePicker, setShowTemplatePicker] = useState(false);
     const [loadingTemplateId, setLoadingTemplateId] = useState<string | null>(null);
+    const [showNotes, setShowNotes] = useState(false);
 
     useEffect(() => {
         getTemplates().then(setTemplates);
@@ -150,16 +151,34 @@ export default function ActiveWorkoutScreen() {
 
                 {/* Notes Section */}
                 <View className="mb-8">
-                    <Text className="text-zinc-400 text-sm mb-2">Workout Notes</Text>
-                    <TextInput
-                        className="bg-zinc-900/80 text-white p-4 rounded-lg min-h-[100px] border border-zinc-800"
-                        placeholder="How did it feel? Any pain or PRs?"
-                        placeholderTextColor="#52525b"
-                        multiline
-                        textAlignVertical="top"
-                        value={activeWorkout.notes}
-                        onChangeText={(text) => useWorkoutStore.getState().setWorkoutNotes(text)}
-                    />
+                    {!showNotes && !activeWorkout.notes ? (
+                        <TouchableOpacity
+                            className="flex-row items-center border border-dashed border-zinc-700 rounded-lg p-4 justify-center"
+                            onPress={() => setShowNotes(true)}
+                        >
+                            <Plus size={20} color="#71717a" />
+                            <Text className="text-zinc-400 ml-2">Add Notes (Optional)</Text>
+                        </TouchableOpacity>
+                    ) : (
+                        <View>
+                            <View className="flex-row justify-between items-center mb-2">
+                                <Text className="text-zinc-400 text-sm">Workout Notes</Text>
+                                <TouchableOpacity onPress={() => setShowNotes(false)}>
+                                    <X size={20} color="#71717a" />
+                                </TouchableOpacity>
+                            </View>
+                            <TextInput
+                                className="bg-zinc-900/80 text-white p-4 rounded-lg min-h-[100px] border border-zinc-800"
+                                placeholder="How did it feel? Any pain or PRs?"
+                                placeholderTextColor="#52525b"
+                                multiline
+                                textAlignVertical="top"
+                                value={activeWorkout.notes}
+                                onChangeText={(text) => useWorkoutStore.getState().setWorkoutNotes(text)}
+                                autoFocus={showNotes && !activeWorkout.notes}
+                            />
+                        </View>
+                    )}
                 </View>
             </ScrollView>
         </ScreenLayout>

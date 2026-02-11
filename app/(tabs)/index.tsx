@@ -7,7 +7,7 @@ import { getWorkoutHistory, getMonthlyWorkoutCount, WorkoutRecord } from "@/lib/
 import { ScreenLayout } from "@/components/ui/ScreenLayout";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Dumbbell, Calendar, TrendingUp, ChevronDown, Edit2, Trash2 } from "lucide-react-native";
+import { Dumbbell, Calendar, TrendingUp, ChevronDown, Edit2, Trash2, Clock } from "lucide-react-native";
 
 export default function Dashboard() {
     const startWorkout = useWorkoutStore((state) => state.startWorkout);
@@ -90,9 +90,13 @@ export default function Dashboard() {
     const formatDate = (dateString: string) => {
         const date = new Date(dateString);
         const now = new Date();
-        const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+        const diffMs = now.getTime() - date.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
 
-        if (diffDays === 0) return "Today";
+        if (diffMins < 60) return `${diffMins} mins ago`;
+        if (diffHours < 24) return `${diffHours} hours ago`;
         if (diffDays === 1) return "Yesterday";
         if (diffDays < 7) return `${diffDays} days ago`;
 
@@ -146,11 +150,15 @@ export default function Dashboard() {
                             <Text className="text-zinc-400 text-sm">{new Date().toLocaleDateString("en-US", { month: "long" })}</Text>
                         </View>
                     </Card>
-                    <Card className="flex-1 flex-row items-center gap-3 opacity-50">
-                        <TrendingUp size={24} color="#a1a1aa" />
+                    <Card className="flex-1 flex-row items-center gap-3">
+                        <Clock size={24} color="#a1a1aa" />
                         <View>
-                            <Text className="text-white font-bold text-base">—</Text>
-                            <Text className="text-zinc-400 text-sm">Coming Soon</Text>
+                            <Text className="text-white font-bold text-base" numberOfLines={1}>
+                                {recentWorkouts.length > 0 ? recentWorkouts[0].name : "—"}
+                            </Text>
+                            <Text className="text-zinc-400 text-sm">
+                                {recentWorkouts.length > 0 ? formatDate(recentWorkouts[0].created_at) : "No workouts yet"}
+                            </Text>
                         </View>
                     </Card>
                 </View>

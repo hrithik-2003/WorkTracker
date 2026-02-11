@@ -41,8 +41,10 @@ export default function WorkoutDetails() {
     const formatDateShort = (dateString: string) => {
         return new Date(dateString).toLocaleDateString("en-US", {
             year: "numeric",
-            month: "long",
+            month: "short",
             day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
         });
     };
 
@@ -59,6 +61,27 @@ export default function WorkoutDetails() {
         if (hasNext) {
             router.replace(`/history/${allWorkoutIds[currentIndex + 1]}`);
         }
+    };
+
+    const formatLine1 = (dateString: string) => {
+        return new Date(dateString).toLocaleDateString("en-US", {
+            weekday: "long",
+        });
+    };
+
+    const formatLine2 = (dateString: string) => {
+        return new Date(dateString).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+        });
+    };
+
+    const formatLine3 = (dateString: string) => {
+        return new Date(dateString).toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+        });
     };
 
     if (loading) {
@@ -111,8 +134,9 @@ export default function WorkoutDetails() {
                     <Card className="flex-1 flex-row items-center py-4 gap-3">
                         <Calendar size={24} color="#a1a1aa" />
                         <View>
-                            <Text className="text-white font-bold text-base">{formatWeekday(workout.started_at)}</Text>
-                            <Text className="text-zinc-400 text-sm">{formatDateShort(workout.started_at)}</Text>
+                            <Text className="text-white font-bold text-base">{formatLine1(workout.started_at)}</Text>
+                            <Text className="text-zinc-400 text-xs">{formatLine2(workout.started_at)}</Text>
+                            <Text className="text-zinc-500 text-[10px] mt-0.5">{formatLine3(workout.started_at)}</Text>
                         </View>
                     </Card>
                     <Card className="flex-1 flex-row items-center py-4 gap-3">
