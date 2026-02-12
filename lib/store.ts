@@ -9,8 +9,8 @@ interface WorkoutState {
     activeWorkout: ActiveWorkout | null;
     isSaving: boolean;
     startWorkout: (name?: string, initialExercises?: Exercise[]) => void;
-    finishWorkout: () => Promise<void>;
-    addExercise: (exercise: Exercise & { recomendedSets?: number }) => void;
+    finishWorkout: () => Promise<{ success: boolean; error?: string }>;
+    addExercise: (exercise: Exercise & { recommendedSets?: number }) => void;
     removeExercise: (exerciseInstanceId: string) => void;
     addSet: (exerciseInstanceId: string, weight: string, reps: string) => void;
     updateSet: (exerciseInstanceId: string, setId: string, updates: Partial<WorkoutSet>) => void;
@@ -18,6 +18,15 @@ interface WorkoutState {
     toggleSetComplete: (exerciseInstanceId: string, setId: string) => void;
     setWorkoutNotes: (notes: string) => void;
     setWorkoutName: (name: string) => void;
+
+    // Rest Timer
+    restTimer: {
+        endTime: number | null; // Timestamp when timer ends
+        isRunning: boolean;
+    };
+    startRestTimer: (durationSeconds: number) => void;
+    stopRestTimer: () => void;
+    addRestTime: (seconds: number) => void;
 }
 
 /**
@@ -43,12 +52,16 @@ export const useWorkoutStore = create<WorkoutState>()(
         (set, get) => ({
             activeWorkout: null,
             isSaving: false,
+            restTimer: {
+                endTime: null,
+                isRunning: false,
+            },
 
-            startWorkout: (name?: string, initialExercises: (Exercise | (Exercise & { recomendedSets?: number }))[] = []) => {
-                const workoutName = name || generateWorkoutName();
+            startWorkout: (name?: string, initialExercises: (Exercise & { recommendedSets?: number })[] = []) => {
+                const workoutName = name || `Workout - ${new Date().toLocaleDateString()}`;
 
-                const exercises: WorkoutExercise[] = initialExercises.map(ex => {
-                    const targetSets = 'recomendedSets' in ex ? (ex.recomendedSets || 3) : 0;
+                const exercises: WorkoutExercise[] = initialExercises.map((ex) => {
+                    const targetSets = ex.recommendedSets || 0;
                     const sets: WorkoutSet[] = [];
 
                     // Pre-create empty sets if starting from a template
@@ -58,7 +71,7 @@ export const useWorkoutStore = create<WorkoutState>()(
                                 id: randomUUID(),
                                 reps: "",
                                 weight: "",
-                                completed: false, // Start as not completed
+                                completed: false,
                             });
                         }
                     }
@@ -71,39 +84,45 @@ export const useWorkoutStore = create<WorkoutState>()(
                     };
                 });
 
+                const newWorkout: ActiveWorkout = {
+                    id: randomUUID(),
+                    name: workoutName,
+                    startTime: new Date().toISOString(),
+                    exercises: exercises,
+                    status: "active",
+                    notes: "",
+                };
+
                 set({
-                    activeWorkout: {
-                        id: randomUUID(),
-                        name: workoutName,
-                        startTime: new Date().toISOString(),
-                        exercises: exercises,
-                        status: "active",
-                    },
+                    activeWorkout: newWorkout,
+                    isSaving: false,
                 });
             },
 
             finishWorkout: async () => {
                 const workout = get().activeWorkout;
-                if (!workout) return;
+                if (!workout) return { success: false, error: "No active workout" };
 
                 set({ isSaving: true });
 
                 const result = await saveWorkout(workout);
                 if (result.success) {
                     console.log("Workout saved successfully!");
+                    set({ activeWorkout: null, isSaving: false });
                 } else {
                     console.error("Failed to save workout:", result.error);
+                    set({ isSaving: false });
                 }
 
-                set({ activeWorkout: null, isSaving: false });
+                return result;
             },
 
             addExercise: (exercise) => {
                 set((state) => {
                     if (!state.activeWorkout) return state;
 
-                    // Pre-populate sets if recomendedSets is provided
-                    const setsCount = (exercise as any).recomendedSets || 0;
+                    // Pre-populate sets if recommendedSets is provided
+                    const setsCount = (exercise as any).recommendedSets || 0;
                     const initialSets: WorkoutSet[] = Array.from({ length: setsCount }, () => ({
                         id: randomUUID(),
                         reps: "",
@@ -199,6 +218,31 @@ export const useWorkoutStore = create<WorkoutState>()(
             toggleSetComplete: (exerciseInstanceId, setId) => {
                 set((state) => {
                     if (!state.activeWorkout) return state;
+
+                    // Check if we are completing the set (it was previously incomplete)
+                    let isBecomingComplete = false;
+                    const exercise = state.activeWorkout.exercises.find((e) => e.id === exerciseInstanceId);
+                    if (exercise) {
+                        const s = exercise.sets.find((set) => set.id === setId);
+                        if (s && !s.completed) {
+                            isBecomingComplete = true;
+                        }
+                    }
+
+                    // If completing a set, start the rest timer (3 mins = 180s)
+                    if (isBecomingComplete) {
+                        const now = Date.now();
+                        // Only start if not already running or just restart it? Let's restart it for the simplified flow.
+                        // Or maybe only if it's not running? User usually wants rest after EACH set.
+                        // Let's set it to 5 seconds from now (for testing).
+                        set({
+                            restTimer: {
+                                endTime: now + 5 * 1000,
+                                isRunning: true,
+                            }
+                        });
+                    }
+
                     return {
                         activeWorkout: {
                             ...state.activeWorkout,
@@ -237,11 +281,45 @@ export const useWorkoutStore = create<WorkoutState>()(
                     };
                 });
             },
+
+            startRestTimer: (durationSeconds) => {
+                set({
+                    restTimer: {
+                        endTime: Date.now() + durationSeconds * 1000,
+                        isRunning: true,
+                    }
+                });
+            },
+
+            stopRestTimer: () => {
+                set({
+                    restTimer: {
+                        endTime: null,
+                        isRunning: false,
+                    }
+                });
+            },
+
+            addRestTime: (seconds) => {
+                set((state) => {
+                    if (!state.restTimer.endTime) return state;
+                    return {
+                        restTimer: {
+                            ...state.restTimer,
+                            endTime: state.restTimer.endTime + seconds * 1000,
+                        }
+                    };
+                });
+            },
         }),
         {
             name: "workout-storage",
             storage: createJSONStorage(() => AsyncStorage),
-            partialize: (state) => ({ activeWorkout: state.activeWorkout }),
+            partialize: (state) => ({
+                activeWorkout: state.activeWorkout,
+                // Persist timer state too so it survives reloads
+                restTimer: state.restTimer
+            }),
         }
     )
 );

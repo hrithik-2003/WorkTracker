@@ -14,13 +14,22 @@ export interface TemplateDetail extends Template {
 }
 
 export interface TemplateExercise extends Exercise {
-    recomendedSets: number;
+    recommendedSets: number;
 }
 
 /**
  * Fetch all workout templates
  */
-export async function getTemplates(): Promise<Template[]> {
+export type ApiResponse<T> = {
+    success: boolean;
+    data?: T;
+    error?: string;
+};
+
+/**
+ * Fetch all workout templates
+ */
+export async function getTemplates(): Promise<ApiResponse<Template[]>> {
     try {
         const { data, error } = await supabase
             .from("workout_templates")
@@ -35,23 +44,25 @@ export async function getTemplates(): Promise<Template[]> {
 
         if (error) throw error;
 
-        return data.map((t: any) => ({
+        const templates = data.map((t: any) => ({
             id: t.id,
             name: t.name,
             description: t.description,
             is_custom: t.is_custom || false,
             exercise_count: t.template_exercises?.[0]?.count || 0,
         }));
-    } catch (error) {
+
+        return { success: true, data: templates };
+    } catch (error: any) {
         console.error("Error fetching templates:", error);
-        return [];
+        return { success: false, error: error.message };
     }
 }
 
 /**
  * Fetch details for a specific template (including exercises)
  */
-export async function getTemplateDetails(templateId: string): Promise<TemplateDetail | null> {
+export async function getTemplateDetails(templateId: string): Promise<ApiResponse<TemplateDetail>> {
     try {
         const { data, error } = await supabase
             .from("workout_templates")
@@ -84,21 +95,28 @@ export async function getTemplateDetails(templateId: string): Promise<TemplateDe
                 name: item.exercise.name,
                 muscleGroup: item.exercise.muscle_group || "Other",
                 category: item.exercise.category || "Other",
-                recomendedSets: item.sets || 3, // Default to 3 if null
+                recommendedSets: item.sets || 3, // Default to 3 if null
             }));
 
-        return {
+        const detail = {
             id: data.id,
             name: data.name,
             description: data.description,
             is_custom: data.is_custom || false,
             exercises,
         };
-    } catch (error) {
+
+        return { success: true, data: detail };
+    } catch (error: any) {
         console.error("Error fetching template details:", error);
-        return null;
+        return { success: false, error: error.message };
     }
 }
+
+/**
+ * Create a new workout template
+ */
+// ... imports
 
 /**
  * Create a new workout template
@@ -107,19 +125,28 @@ export async function createTemplate(
     name: string,
     description: string,
     exercises: { id: string, sets: number }[]
-): Promise<{ success: boolean; error?: string }> {
+): Promise<ApiResponse<{ id: string }>> {
     try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("User not authenticated");
+
         // 1. Create Template (is_custom = true)
         const { data: templateData, error: templateError } = await supabase
             .from("workout_templates")
-            .insert({ name, description, is_custom: true })
+            .insert({
+                name,
+                description,
+                user_id: user.id,
+                is_custom: true
+            })
             .select()
             .single();
 
         if (templateError) throw templateError;
 
         // 2. Link Exercises
-        const templateExercises = exercises.map((ex, index) => ({
+
+        const finalExercisesPayload = exercises.map((ex, index) => ({
             template_id: templateData.id,
             exercise_id: ex.id,
             order: index,
@@ -128,11 +155,15 @@ export async function createTemplate(
 
         const { error: exercisesError } = await supabase
             .from("template_exercises")
-            .insert(templateExercises);
+            .insert(finalExercisesPayload);
 
-        if (exercisesError) throw exercisesError;
+        if (exercisesError) {
+            // Rollback
+            await supabase.from("workout_templates").delete().eq("id", templateData.id);
+            throw exercisesError;
+        }
 
-        return { success: true };
+        return { success: true, data: { id: templateData.id } };
     } catch (error: any) {
         console.error("Error creating template:", error);
         return { success: false, error: error.message };
@@ -142,7 +173,7 @@ export async function createTemplate(
 /**
  * Delete a workout template and its exercises
  */
-export async function deleteTemplate(templateId: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteTemplate(templateId: string): Promise<ApiResponse<null>> {
     try {
         // Delete template_exercises first (foreign key constraint)
         const { error: exercisesError } = await supabase
@@ -175,7 +206,7 @@ export async function updateTemplate(
     name: string,
     description: string,
     exercises: { id: string, sets: number }[]
-): Promise<{ success: boolean; error?: string }> {
+): Promise<ApiResponse<null>> {
     try {
         // 1. Update template details
         const { error: templateError } = await supabase

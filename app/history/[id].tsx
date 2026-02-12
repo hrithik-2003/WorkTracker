@@ -19,14 +19,19 @@ export default function WorkoutDetails() {
             if (!id) return;
             setLoading(true);
 
-            const [workoutData, ids] = await Promise.all([
+            const [workoutRes, idsRes] = await Promise.all([
                 getWorkoutDetails(id),
                 getAllWorkoutIds()
             ]);
 
-            setWorkout(workoutData);
-            setAllWorkoutIds(ids);
-            setCurrentIndex(ids.indexOf(id));
+            if (workoutRes.success) {
+                setWorkout(workoutRes.data || null);
+            }
+            if (idsRes.success) {
+                const ids = idsRes.data || [];
+                setAllWorkoutIds(ids);
+                setCurrentIndex(ids.indexOf(id));
+            }
             setLoading(false);
         };
         fetchData();

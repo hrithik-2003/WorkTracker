@@ -12,8 +12,12 @@ export default function History() {
     const [refreshing, setRefreshing] = useState(false);
 
     const fetchHistory = useCallback(async () => {
-        const data = await getWorkoutHistory();
-        setWorkouts(data);
+        const res = await getWorkoutHistory();
+        if (res.success && res.data) {
+            setWorkouts(res.data);
+        } else {
+            console.error(res.error);
+        }
         setLoading(false);
         setRefreshing(false);
     }, []);

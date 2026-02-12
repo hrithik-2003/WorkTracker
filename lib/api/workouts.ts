@@ -31,72 +31,43 @@ export interface SetRecord {
  */
 export async function saveWorkout(workout: ActiveWorkout): Promise<{ success: boolean; error?: string }> {
     try {
-        console.log("Saving workout:", workout.id, "with", workout.exercises.length, "exercises");
+        console.log("Saving workout atomically:", workout.id);
 
-        // 1. Insert the workout
-        const { data: workoutData, error: workoutError } = await supabase
-            .from("workouts")
-            .insert({
-                id: workout.id,
-                name: workout.name,
-                started_at: workout.startTime,
-                ended_at: new Date().toISOString(),
-                notes: workout.notes,
-            })
-            .select()
-            .single();
+        // Prepare the payload
+        const payload = {
+            id: workout.id,
+            name: workout.name,
+            started_at: workout.startTime,
+            ended_at: new Date().toISOString(),
+            notes: workout.notes,
+            exercises: workout.exercises.map((ex, i) => ({
+                id: ex.id,
+                exercise_id: ex.exerciseId,
+                name: ex.exercise.name,
+                order: i,
+                sets: ex.sets
+                    .filter(s => s.completed || (s.weight && s.reps)) // Filter out empty/incomplete sets
+                    .map((s, j) => ({
+                        id: s.id,
+                        weight: parseFloat(String(s.weight)) || 0,
+                        reps: parseInt(String(s.reps), 10) || 0,
+                        order: j
+                    }))
+            }))
+        };
 
-        if (workoutError) {
-            console.error("Workout insert error:", workoutError);
-            throw workoutError;
-        }
-        console.log("Workout inserted:", workoutData);
+        const { data, error } = await supabase.rpc('save_full_workout', { payload });
 
-        // 2. Insert workout_exercises and sets
-        for (let i = 0; i < workout.exercises.length; i++) {
-            const exercise = workout.exercises[i];
-            console.log("Inserting exercise:", exercise.id, exercise.exercise.name, "exerciseId:", exercise.exerciseId);
-
-            const { data: exerciseData, error: exerciseError } = await supabase
-                .from("workout_exercises")
-                .insert({
-                    id: exercise.id,
-                    workout_id: workout.id,
-                    exercise_id: exercise.exerciseId,
-                    exercise_name: exercise.exercise.name,
-                    order: i,
-                })
-                .select()
-                .single();
-
-            if (exerciseError) {
-                console.error("Exercise insert error:", exerciseError);
-                throw exerciseError;
-            }
-            console.log("Exercise inserted:", exerciseData);
-
-            // 3. Insert sets for this exercise
-            const setsToInsert = exercise.sets.map((set, index) => ({
-                id: set.id,
-                workout_exercise_id: exercise.id,
-                weight: parseFloat(String(set.weight)) || 0,
-                reps: parseInt(String(set.reps), 10) || 0,
-                order: index,
-            }));
-
-            console.log("Sets to insert:", setsToInsert.length);
-
-            if (setsToInsert.length > 0) {
-                const { error: setsError } = await supabase.from("sets").insert(setsToInsert);
-                if (setsError) {
-                    console.error("Sets insert error:", setsError);
-                    throw setsError;
-                }
-                console.log("Sets inserted successfully");
-            }
+        if (error) {
+            console.error("Error invoking save_full_workout:", error);
+            throw error;
         }
 
-        console.log("Workout saved successfully!");
+        if (data && !data.success) {
+            throw new Error(data.error || "Unknown error during save");
+        }
+
+        console.log("Workout saved successfully via RPC!");
         return { success: true };
     } catch (error: any) {
         console.error("Error saving workout:", error);
@@ -104,13 +75,17 @@ export async function saveWorkout(workout: ActiveWorkout): Promise<{ success: bo
     }
 }
 
+// Helper type for consistent API responses
+export type ApiResponse<T> = {
+    success: boolean;
+    data?: T;
+    error?: string;
+};
+
 /**
  * Fetch workout history
  */
-/**
- * Fetch workout history
- */
-export async function getWorkoutHistory(): Promise<WorkoutRecord[]> {
+export async function getWorkoutHistory(): Promise<ApiResponse<WorkoutRecord[]>> {
     try {
         const { data, error } = await supabase
             .from("workouts")
@@ -138,17 +113,17 @@ export async function getWorkoutHistory(): Promise<WorkoutRecord[]> {
 
         if (error) throw error;
 
-        return data as WorkoutRecord[];
-    } catch (error) {
+        return { success: true, data: data as WorkoutRecord[] };
+    } catch (error: any) {
         console.error("Error fetching workout history:", error);
-        return [];
+        return { success: false, error: error.message };
     }
 }
 
 /**
  * Fetch details for a specific workout
  */
-export async function getWorkoutDetails(id: string): Promise<WorkoutRecord | null> {
+export async function getWorkoutDetails(id: string): Promise<ApiResponse<WorkoutRecord>> {
     try {
         const { data, error } = await supabase
             .from("workouts")
@@ -186,17 +161,17 @@ export async function getWorkoutDetails(id: string): Promise<WorkoutRecord | nul
             });
         }
 
-        return data as WorkoutRecord;
-    } catch (error) {
+        return { success: true, data: data as WorkoutRecord };
+    } catch (error: any) {
         console.error("Error fetching workout details:", error);
-        return null;
+        return { success: false, error: error.message };
     }
 }
 
 /**
  * Fetch exercises from database
  */
-export async function getExercises() {
+export async function getExercises(): Promise<ApiResponse<any[]>> {
     try {
         const { data, error } = await supabase
             .from("exercises")
@@ -205,17 +180,17 @@ export async function getExercises() {
 
         if (error) throw error;
 
-        return data;
-    } catch (error) {
+        return { success: true, data };
+    } catch (error: any) {
         console.error("Error fetching exercises:", error);
-        return [];
+        return { success: false, error: error.message };
     }
 }
 
 /**
  * Get count of workouts completed this month
  */
-export async function getMonthlyWorkoutCount(): Promise<number> {
+export async function getMonthlyWorkoutCount(): Promise<ApiResponse<number>> {
     try {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -226,17 +201,17 @@ export async function getMonthlyWorkoutCount(): Promise<number> {
             .gte("started_at", startOfMonth);
 
         if (error) throw error;
-        return count || 0;
-    } catch (error) {
+        return { success: true, data: count || 0 };
+    } catch (error: any) {
         console.error("Error fetching monthly workout count:", error);
-        return 0;
+        return { success: false, error: error.message };
     }
 }
 
 /**
  * Get all workout IDs in chronological order (for navigation)
  */
-export async function getAllWorkoutIds(): Promise<string[]> {
+export async function getAllWorkoutIds(): Promise<ApiResponse<string[]>> {
     try {
         const { data, error } = await supabase
             .from("workouts")
@@ -244,9 +219,9 @@ export async function getAllWorkoutIds(): Promise<string[]> {
             .order("created_at", { ascending: false });
 
         if (error) throw error;
-        return data?.map(w => w.id) || [];
-    } catch (error) {
+        return { success: true, data: data?.map(w => w.id) || [] };
+    } catch (error: any) {
         console.error("Error fetching workout IDs:", error);
-        return [];
+        return { success: false, error: error.message };
     }
 }

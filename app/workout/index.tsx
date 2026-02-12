@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, Alert, TextInput, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, Alert, TextInput, TouchableOpacity, ActivityIndicator, Platform } from "react-native";
 import { Stack, router } from "expo-router";
 import { useState, useEffect } from "react";
 import { useWorkoutStore } from "@/lib/store";
@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { ExerciseCard } from "@/components/workout/ExerciseCard";
 import { getTemplates, getTemplateDetails, Template } from "@/lib/api/templates";
 import { ChevronDown, FolderOpen, Plus, X } from "lucide-react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
+import { RestTimer } from "@/components/workout/RestTimer";
 
 export default function ActiveWorkoutScreen() {
     const activeWorkout = useWorkoutStore((state) => state.activeWorkout);
@@ -19,14 +21,22 @@ export default function ActiveWorkoutScreen() {
     const [showNotes, setShowNotes] = useState(false);
 
     useEffect(() => {
-        getTemplates().then(setTemplates);
+        getTemplates().then((res) => {
+            if (res.success && res.data) {
+                setTemplates(res.data);
+            } else {
+                Alert.alert("Error", res.error || "Failed to load templates");
+            }
+        });
     }, []);
 
     const handleLoadTemplate = async (templateId: string) => {
         setLoadingTemplateId(templateId);
-        const details = await getTemplateDetails(templateId);
+        const res = await getTemplateDetails(templateId);
 
-        if (details) {
+        if (res.success && res.data) {
+            const details = res.data;
+
             // Update workout name to template name
             useWorkoutStore.getState().setWorkoutName(details.name);
 
@@ -37,7 +47,7 @@ export default function ActiveWorkoutScreen() {
                     name: exercise.name,
                     muscleGroup: exercise.muscleGroup,
                     category: exercise.category,
-                    recomendedSets: exercise.recomendedSets,
+                    recommendedSets: exercise.recommendedSets,
                 });
             });
             setShowTemplatePicker(false);
@@ -73,8 +83,12 @@ export default function ActiveWorkoutScreen() {
                 text: "Finish",
                 style: "default",
                 onPress: async () => {
-                    await finishWorkout();
-                    router.replace("/(tabs)/history");
+                    const result = await finishWorkout();
+                    if (result.success) {
+                        router.replace("/(tabs)/history");
+                    } else {
+                        Alert.alert("Error Saving Workout", result.error || "An unknown error occurred. Please try again.");
+                    }
                 },
             },
         ]);
@@ -137,7 +151,12 @@ export default function ActiveWorkoutScreen() {
                 </View>
             )}
 
-            <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+            <KeyboardAwareScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                extraScrollHeight={120}
+                enableOnAndroid={true}
+            >
                 {activeWorkout.exercises.map((exercise) => (
                     <ExerciseCard key={exercise.id} exercise={exercise} />
                 ))}
@@ -180,7 +199,8 @@ export default function ActiveWorkoutScreen() {
                         </View>
                     )}
                 </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
+            <RestTimer />
         </ScreenLayout>
     );
 }

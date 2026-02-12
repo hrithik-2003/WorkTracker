@@ -17,19 +17,37 @@ export default function Dashboard() {
     const [startingTemplateId, setStartingTemplateId] = useState<string | null>(null);
     const [exampleRoutinesExpanded, setExampleRoutinesExpanded] = useState(false);
 
+    const [isLoading, setIsLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+
     // Context menu state
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
     const [showContextMenu, setShowContextMenu] = useState(false);
 
     const fetchData = useCallback(async () => {
-        const [templatesData, historyData, monthlyData] = await Promise.all([
-            getTemplates(),
-            getWorkoutHistory(),
-            getMonthlyWorkoutCount()
-        ]);
-        setTemplates(templatesData);
-        setRecentWorkouts(historyData.slice(0, 3));
-        setMonthlyCount(monthlyData);
+        try {
+            const [templatesRes, historyRes, monthlyRes] = await Promise.all([
+                getTemplates(),
+                getWorkoutHistory(),
+                getMonthlyWorkoutCount()
+            ]);
+
+            if (templatesRes.success && templatesRes.data) {
+                setTemplates(templatesRes.data);
+            }
+
+            if (historyRes.success && historyRes.data) {
+                setRecentWorkouts(historyRes.data.slice(0, 3));
+            }
+
+            if (monthlyRes.success && monthlyRes.data !== undefined) {
+                setMonthlyCount(monthlyRes.data);
+            }
+        } catch (error) {
+            console.error("Error fetching dashboard data:", error);
+        } finally {
+            setIsLoading(false);
+        }
     }, []);
 
     useFocusEffect(
@@ -38,11 +56,19 @@ export default function Dashboard() {
         }, [fetchData])
     );
 
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await fetchData();
+        setRefreshing(false);
+    }, [fetchData]);
+
     const handleStartTemplate = async (templateId: string, templateName: string) => {
         setStartingTemplateId(templateId);
-        const details = await getTemplateDetails(templateId);
+        const res = await getTemplateDetails(templateId);
 
-        if (details) {
+        if (res.success && res.data) {
+            const details = res.data;
+
             // Start workout with pre-filled exercises
             startWorkout(templateName, details.exercises);
             router.push("/workout");
@@ -78,7 +104,7 @@ export default function Dashboard() {
                             if (result.success) {
                                 fetchData(); // Refresh the list
                             } else {
-                                Alert.alert("Error", "Failed to delete routine.");
+                                Alert.alert("Error", result.error || "Failed to delete routine.");
                             }
                         },
                     },
@@ -111,12 +137,32 @@ export default function Dashboard() {
         return `${Math.floor(mins / 60)}h ${mins % 60}m`;
     };
 
+    const getGreeting = () => {
+        const hour = new Date().getHours();
+        if (hour < 12) return "Good Morning";
+        if (hour < 18) return "Good Afternoon";
+        return "Good Evening";
+    };
+
+    if (isLoading) {
+        return (
+            <ScreenLayout className="justify-center items-center">
+                <ActivityIndicator size="large" color="#3b82f6" />
+            </ScreenLayout>
+        );
+    }
+
     return (
         <ScreenLayout>
-            <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+            <ScrollView
+                contentContainerStyle={{ paddingBottom: 20 }}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3b82f6" />
+                }
+            >
                 {/* Header */}
                 <View className="mb-8 mt-4">
-                    <Text className="text-zinc-400 text-lg">Good Evening,</Text>
+                    <Text className="text-zinc-400 text-lg">{getGreeting()},</Text>
                     <Text className="text-white text-3xl font-bold">Time to crush it!</Text>
                 </View>
 
